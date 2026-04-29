@@ -60,7 +60,7 @@ $ yarn link hh
 # With pnpm
 $ pnpm link --global
 $ cd ../my-package
-$ pnpm link -—global hh
+$ pnpm link --global hh
 ```
 
 ## Running tests

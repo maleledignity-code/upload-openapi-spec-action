@@ -11,7 +11,7 @@ import type { APIResponseProps } from './internal/parse';
 import { getPlatformHeaders } from './internal/detect-platform';
 import * as Shims from './internal/shims';
 import * as Opts from './internal/request-options';
-import * as qs from './internal/qs';
+import { stringifyQuery } from './internal/utils/query';
 import { VERSION } from './version';
 import * as Errors from './core/error';
 import * as Uploads from './core/uploads';
@@ -191,6 +191,18 @@ export class Hh {
     this.fetch = options.fetch ?? Shims.getDefaultFetch();
     this.#encoder = Opts.FallbackEncoder;
 
+    const customHeadersEnv = readEnv('HH_CUSTOM_HEADERS');
+    if (customHeadersEnv) {
+      const parsed: Record<string, string> = {};
+      for (const line of customHeadersEnv.split('\n')) {
+        const colon = line.indexOf(':');
+        if (colon >= 0) {
+          parsed[line.substring(0, colon).trim()] = line.substring(colon + 1).trim();
+        }
+      }
+      options.defaultHeaders = { ...parsed, ...options.defaultHeaders };
+    }
+
     this._options = options;
 
     this.apiKey = apiKey;
@@ -234,8 +246,8 @@ export class Hh {
     return buildHeaders([{ api_key: this.apiKey }]);
   }
 
-  protected stringifyQuery(query: Record<string, unknown>): string {
-    return qs.stringify(query, { arrayFormat: 'comma' });
+  protected stringifyQuery(query: object | Record<string, unknown>): string {
+    return stringifyQuery(query);
   }
 
   private getUserAgent(): string {
@@ -267,12 +279,13 @@ export class Hh {
       : new URL(baseURL + (baseURL.endsWith('/') && path.startsWith('/') ? path.slice(1) : path));
 
     const defaultQuery = this.defaultQuery();
-    if (!isEmptyObj(defaultQuery)) {
-      query = { ...defaultQuery, ...query };
+    const pathQuery = Object.fromEntries(url.searchParams);
+    if (!isEmptyObj(defaultQuery) || !isEmptyObj(pathQuery)) {
+      query = { ...pathQuery, ...defaultQuery, ...query };
     }
 
     if (typeof query === 'object' && query && !Array.isArray(query)) {
-      url.search = this.stringifyQuery(query as Record<string, unknown>);
+      url.search = this.stringifyQuery(query);
     }
 
     return url.toString();
@@ -577,9 +590,9 @@ export class Hh {
       }
     }
 
-    // If the API asks us to wait a certain amount of time (and it's a reasonable amount),
-    // just do what it says, but otherwise calculate a default
-    if (!(timeoutMillis && 0 <= timeoutMillis && timeoutMillis < 60 * 1000)) {
+    // If the API asks us to wait a certain amount of time, just do what it
+    // says, but otherwise calculate a default
+    if (timeoutMillis === undefined) {
       const maxRetries = options.maxRetries ?? this.maxRetries;
       timeoutMillis = this.calculateDefaultRetryTimeoutMillis(retriesRemaining, maxRetries);
     }
@@ -711,7 +724,7 @@ export class Hh {
     ) {
       return {
         bodyHeaders: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: this.stringifyQuery(body as Record<string, unknown>),
+        body: this.stringifyQuery(body),
       };
     } else {
       return this.#encoder({ body, headers });
@@ -737,8 +750,17 @@ export class Hh {
 
   static toFile = Uploads.toFile;
 
+  /**
+   * Everything about your Pets
+   */
   pets: API.Pets = new API.Pets(this);
+  /**
+   * Access to Petstore orders
+   */
   store: API.Store = new API.Store(this);
+  /**
+   * Operations about user
+   */
   users: API.Users = new API.Users(this);
 }
 
