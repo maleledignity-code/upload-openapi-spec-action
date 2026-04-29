@@ -1,171 +1,365 @@
-# Build Stainless SDKs from GitHub Actions
+# Hh TypeScript API Library
 
-GitHub Actions for building [Stainless](https://stainless.com/) SDKs and
-previewing changes to an SDK from a pull request. Refer to [our
-docs on automating builds](https://www.stainless.com/docs/guides/automate-updates) for more information.
+[![NPM version](<https://img.shields.io/npm/v/hh.svg?label=npm%20(stable)>)](https://npmjs.org/package/hh) ![npm bundle size](https://img.shields.io/bundlephobia/minzip/hh)
 
-Support for GitLab CI is available. See the [GitLab example](./examples/merge_request_gitlab.yml).
+This library provides convenient access to the Hh REST API from server-side TypeScript or JavaScript.
 
-## Authentication
+The full API of this library can be found in [api.md](api.md).
 
-The action supports two authentication methods:
+It is generated with [Stainless](https://www.stainless.com/).
 
-**GitHub OIDC (recommended):** [Install the Stainless GitHub
-App](https://www.stainless.com/docs/guides/publish/#install-the-stainless-github-app) in your GitHub organization and
-link it to your Stainless organization. The app doesn't need access to the repository containing the workflow — just the
-org-level installation is enough. The action will authenticate automatically using GitHub OIDC. This is the default
-method shown in our examples.
+## Installation
 
-With OIDC (short for OpenID Connect), there's no secret to set up or rotate — GitHub mints a short-lived, cryptographically signed token for each
-workflow run that can be validated by Stainless.
+```sh
+npm install git+ssh://git@github.com:stainless-sdks/hh-typescript.git
+```
 
 > [!NOTE]
-> OIDC authentication requires the GitHub organization running the workflow is the same GitHub organization that is linked to your Stainless organization. If your spec is in a different GitHub organization, you must use API key authentication instead.
-
-**API keys:** Generate an API key from your Stainless organization dashboard and add it as a `STAINLESS_API_KEY` secret. This works well for getting started or when you don't have admin permissions to install the GitHub App. See [pull_request_api_key.yml](./examples/pull_request_api_key.yml) for the workflow setup.
-
-> [!NOTE]
-> **GitLab CI:** OIDC isn't yet supported. Use the API key method and set the `STAINLESS_API_KEY` environment variable. See the template files in `build/gitlab-ci.yml`, `merge/gitlab-ci.yml`, and `preview/gitlab-ci.yml`.
+> Once this package is [published to npm](https://www.stainless.com/docs/guides/publish), this will become: `npm install hh`
 
 ## Usage
 
-Add a workflow file to the repository that contains your OpenAPI spec:
+The full API of this library can be found in [api.md](api.md).
 
-<details>
-<summary><code>.github/workflows/stainless.yml</code></summary>
+<!-- prettier-ignore -->
+```js
+import Hh from 'hh';
 
-```yml
-name: Build SDKs for pull request
+const client = new Hh({
+  apiKey: process.env['PETSTORE_API_KEY'], // This is the default and can be omitted
+});
 
-on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - closed
+const order = await client.store.orders.create({
+  petId: 1,
+  quantity: 1,
+  status: 'placed',
+});
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
-
-env:
-  STAINLESS_ORG: YOUR_ORG
-  STAINLESS_PROJECT: YOUR_PROJECT
-  OAS_PATH: YOUR_OAS_PATH
-
-jobs:
-  preview:
-    if: github.event.action != 'closed'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      id-token: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Run preview builds
-        uses: stainless-api/upload-openapi-spec-action/preview@v1
-        with:
-          org: ${{ env.STAINLESS_ORG }}
-          project: ${{ env.STAINLESS_PROJECT }}
-          oas_path: ${{ env.OAS_PATH }}
-
-  merge:
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: write
-      id-token: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Run merge build
-        uses: stainless-api/upload-openapi-spec-action/merge@v1
-        with:
-          org: ${{ env.STAINLESS_ORG }}
-          project: ${{ env.STAINLESS_PROJECT }}
-          oas_path: ${{ env.OAS_PATH }}
+console.log(order.id);
 ```
 
-</details>
+### Request & Response types
 
-Then, pull requests to your GitHub repository that update OpenAPI spec or
-Stainless config will build your SDKs and make a comment with the results.
+This library includes TypeScript definitions for all request params and response fields. You may import and use them like so:
 
-Note: the `merge` job depends on the `preview` job, so you can't use just
-the `merge` job alone. See [our docs](https://www.stainless.com/docs/guides/automate-updates) for more details.
+<!-- prettier-ignore -->
+```ts
+import Hh from 'hh';
 
-For more details about the input parameters, see the
-[example workflow](./examples/pull_request.yml) file.
+const client = new Hh({
+  apiKey: process.env['PETSTORE_API_KEY'], // This is the default and can be omitted
+});
 
-For more examples of usage, including push-based workflows, using code samples,
-integration with docs platforms, and testing preview builds, see the [examples
-directory](./examples).
+const response: Hh.StoreListInventoryResponse = await client.store.listInventory();
+```
 
-<details>
-<summary><b>Workflow permissions</b></summary>
+Documentation for each method, request param, and response field are available in docstrings and will appear on hover in most modern editors.
 
-The workflows require the following [permissions](https://docs.github.com/en/actions/writing-workflows/workflow-syntax-for-github-actions#jobsjob_idpermissions):
+## Handling errors
 
-- **`id-token: write`** - Required for GitHub OIDC authentication. Allows the workflow to request an OIDC token from GitHub.
+When the library is unable to connect to the API,
+or if the API returns a non-success status code (i.e., 4xx or 5xx response),
+a subclass of `APIError` will be thrown:
 
-- **`pull-requests: write`** - Required for posting comments on pull requests with build results. If you don't need comments, you can set `make_comment: false` and remove this permission.
+<!-- prettier-ignore -->
+```ts
+const response = await client.store.listInventory().catch(async (err) => {
+  if (err instanceof Hh.APIError) {
+    console.log(err.status); // 400
+    console.log(err.name); // BadRequestError
+    console.log(err.headers); // {server: 'nginx', ...}
+  } else {
+    throw err;
+  }
+});
+```
 
-- **`contents: read`** - Required for checking out the repository code to read the OpenAPI spec and config files.
+Error codes are as follows:
 
-</details>
+| Status Code | Error Type                 |
+| ----------- | -------------------------- |
+| 400         | `BadRequestError`          |
+| 401         | `AuthenticationError`      |
+| 403         | `PermissionDeniedError`    |
+| 404         | `NotFoundError`            |
+| 422         | `UnprocessableEntityError` |
+| 429         | `RateLimitError`           |
+| >=500       | `InternalServerError`      |
+| N/A         | `APIConnectionError`       |
 
-## Security
+### Retries
 
-If your GitHub repository is public, require approval for workflows from fork PRs to prevent untrusted contributors from accessing OIDC tokens or secrets.
+Certain errors will be automatically retried 2 times by default, with a short exponential backoff.
+Connection errors (for example, due to a network connectivity problem), 408 Request Timeout, 409 Conflict,
+429 Rate Limit, and >=500 Internal errors will all be retried by default.
 
-Go to **Settings** → **Actions** → **General**, then under "Fork pull request workflows from outside collaborators", select **"Require approval for all outside collaborators"**.
+You can use the `maxRetries` option to configure or disable this:
 
-See [GitHub's docs](https://docs.github.com/en/actions/managing-workflow-runs/approving-workflow-runs-from-public-forks) for more details.
+<!-- prettier-ignore -->
+```js
+// Configure the default for all requests:
+const client = new Hh({
+  maxRetries: 0, // default is 2
+});
 
-## Actions reference
+// Or, configure per-request:
+await client.store.listInventory({
+  maxRetries: 5,
+});
+```
 
-This repository provides several GitHub actions:
+### Timeouts
 
-### Core Actions
+Requests time out after 1 minute by default. You can configure this with a `timeout` option:
 
-- `stainless-api/upload-openapi-spec-action/build` - Build SDKs for a Stainless project. See the [action definition](./build/action.yml) for input parameters.
+<!-- prettier-ignore -->
+```ts
+// Configure the default for all requests:
+const client = new Hh({
+  timeout: 20 * 1000, // 20 seconds (default is 1 minute)
+});
 
-- `stainless-api/upload-openapi-spec-action/preview` - Preview SDK changes from a pull request. See the [action definition](./preview/action.yml) for input parameters.
+// Override per-request:
+await client.store.listInventory({
+  timeout: 5 * 1000,
+});
+```
 
-- `stainless-api/upload-openapi-spec-action/merge` - Merge SDK changes from a pull request. See the [action definition](./merge/action.yml) for input parameters.
+On timeout, an `APIConnectionTimeoutError` is thrown.
 
-- `stainless-api/upload-openapi-spec-action/checkout-pr-ref` - Checkout the base or head commit for previewing changes. See the [action definition](./checkout-pr-ref/action.yml) for input parameters.
+Note that requests which time out will be [retried twice by default](#retries).
 
-### Preparation Tools
+## Advanced Usage
 
-- `stainless-api/upload-openapi-spec-action/prepare/swagger` - Convert Swagger 2.0 specs to OpenAPI 3.x. See the [action definition](./prepare/swagger/action.yml) for input parameters and the [example workflow](./examples/prepare_swagger.yml).
+### Accessing raw Response data (e.g., headers)
 
-All except `checkout-pr-ref` work in GitLab CI.
+The "raw" `Response` returned by `fetch()` can be accessed through the `.asResponse()` method on the `APIPromise` type that all methods return.
+This method returns as soon as the headers for a successful response are received and does not consume the response body, so you are free to write custom parsing or streaming logic.
 
-The `preview` and `merge` actions output an `install_url` for each SDK language. You can use this to test builds directly from the Stainless package server before merging. See the [SDK usage example](./examples/pull_request_sdk_usage.yml).
+You can also use the `.withResponse()` method to get the raw `Response` along with the parsed data.
+Unlike `.asResponse()` this method consumes the body, returning once it is parsed.
 
-## Versioning
+<!-- prettier-ignore -->
+```ts
+const client = new Hh();
 
-These actions use [semantic versioning](https://semver.org/), and you can pin
-your action to a major (`v1`), minor (`v1.0`), or patch (`v1.0.0`) version.
-The public API includes:
+const response = await client.store.listInventory().asResponse();
+console.log(response.headers.get('X-My-Header'));
+console.log(response.statusText); // access the underlying Response object
 
-- The inputs to each action, and their expected format.
+const { data: response, response: raw } = await client.store.listInventory().withResponse();
+console.log(raw.headers.get('X-My-Header'));
+console.log(response);
+```
 
-- The format of pull request comments.
+### Logging
 
-- The name and format of the file written to `documented_spec_path`.
+> [!IMPORTANT]
+> All log messages are intended for debugging only. The format and content of log messages
+> may change between releases.
 
-The public API does not include:
+#### Log levels
 
-- The format of the `outcomes` and `base_outcomes` outputs.
+The log level can be configured in two ways:
+
+1. Via the `HH_LOG` environment variable
+2. Using the `logLevel` client option (overrides the environment variable if set)
+
+```ts
+import Hh from 'hh';
+
+const client = new Hh({
+  logLevel: 'debug', // Show all log messages
+});
+```
+
+Available log levels, from most to least verbose:
+
+- `'debug'` - Show debug messages, info, warnings, and errors
+- `'info'` - Show info messages, warnings, and errors
+- `'warn'` - Show warnings and errors (default)
+- `'error'` - Show only errors
+- `'off'` - Disable all logging
+
+At the `'debug'` level, all HTTP requests and responses are logged, including headers and bodies.
+Some authentication-related headers are redacted, but sensitive data in request and response bodies
+may still be visible.
+
+#### Custom logger
+
+By default, this library logs to `globalThis.console`. You can also provide a custom logger.
+Most logging libraries are supported, including [pino](https://www.npmjs.com/package/pino), [winston](https://www.npmjs.com/package/winston), [bunyan](https://www.npmjs.com/package/bunyan), [consola](https://www.npmjs.com/package/consola), [signale](https://www.npmjs.com/package/signale), and [@std/log](https://jsr.io/@std/log). If your logger doesn't work, please open an issue.
+
+When providing a custom logger, the `logLevel` option still controls which messages are emitted, messages
+below the configured level will not be sent to your logger.
+
+```ts
+import Hh from 'hh';
+import pino from 'pino';
+
+const logger = pino();
+
+const client = new Hh({
+  logger: logger.child({ name: 'Hh' }),
+  logLevel: 'debug', // Send all messages to pino, allowing it to filter
+});
+```
+
+### Making custom/undocumented requests
+
+This library is typed for convenient access to the documented API. If you need to access undocumented
+endpoints, params, or response properties, the library can still be used.
+
+#### Undocumented endpoints
+
+To make requests to undocumented endpoints, you can use `client.get`, `client.post`, and other HTTP verbs.
+Options on the client, such as retries, will be respected when making these requests.
+
+```ts
+await client.post('/some/path', {
+  body: { some_prop: 'foo' },
+  query: { some_query_arg: 'bar' },
+});
+```
+
+#### Undocumented request params
+
+To make requests using undocumented parameters, you may use `// @ts-expect-error` on the undocumented
+parameter. This library doesn't validate at runtime that the request matches the type, so any extra values you
+send will be sent as-is.
+
+```ts
+client.store.orders.create({
+  // ...
+  // @ts-expect-error baz is not yet public
+  baz: 'undocumented option',
+});
+```
+
+For requests with the `GET` verb, any extra params will be in the query, all other requests will send the
+extra param in the body.
+
+If you want to explicitly send an extra argument, you can do so with the `query`, `body`, and `headers` request
+options.
+
+#### Undocumented response properties
+
+To access undocumented response properties, you may access the response object with `// @ts-expect-error` on
+the response object, or cast the response object to the requisite type. Like the request params, we do not
+validate or strip extra properties from the response from the API.
+
+### Customizing the fetch client
+
+By default, this library expects a global `fetch` function is defined.
+
+If you want to use a different `fetch` function, you can either polyfill the global:
+
+```ts
+import fetch from 'my-fetch';
+
+globalThis.fetch = fetch;
+```
+
+Or pass it to the client:
+
+```ts
+import Hh from 'hh';
+import fetch from 'my-fetch';
+
+const client = new Hh({ fetch });
+```
+
+### Fetch options
+
+If you want to set custom `fetch` options without overriding the `fetch` function, you can provide a `fetchOptions` object when instantiating the client or making a request. (Request-specific options override client options.)
+
+```ts
+import Hh from 'hh';
+
+const client = new Hh({
+  fetchOptions: {
+    // `RequestInit` options
+  },
+});
+```
+
+#### Configuring proxies
+
+To modify proxy behavior, you can provide custom `fetchOptions` that add runtime-specific proxy
+options to requests:
+
+<img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/node.svg" align="top" width="18" height="21"> **Node** <sup>[[docs](https://github.com/nodejs/undici/blob/main/docs/docs/api/ProxyAgent.md#example---proxyagent-with-fetch)]</sup>
+
+```ts
+import Hh from 'hh';
+import * as undici from 'undici';
+
+const proxyAgent = new undici.ProxyAgent('http://localhost:8888');
+const client = new Hh({
+  fetchOptions: {
+    dispatcher: proxyAgent,
+  },
+});
+```
+
+<img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/bun.svg" align="top" width="18" height="21"> **Bun** <sup>[[docs](https://bun.sh/guides/http/proxy)]</sup>
+
+```ts
+import Hh from 'hh';
+
+const client = new Hh({
+  fetchOptions: {
+    proxy: 'http://localhost:8888',
+  },
+});
+```
+
+<img src="https://raw.githubusercontent.com/stainless-api/sdk-assets/refs/heads/main/deno.svg" align="top" width="18" height="21"> **Deno** <sup>[[docs](https://docs.deno.com/api/deno/~/Deno.createHttpClient)]</sup>
+
+```ts
+import Hh from 'npm:hh';
+
+const httpClient = Deno.createHttpClient({ proxy: { url: 'http://localhost:8888' } });
+const client = new Hh({
+  fetchOptions: {
+    client: httpClient,
+  },
+});
+```
+
+## Frequently Asked Questions
+
+## Semantic versioning
+
+This package generally follows [SemVer](https://semver.org/spec/v2.0.0.html) conventions, though certain backwards-incompatible changes may be released as minor versions:
+
+1. Changes that only affect static types, without breaking runtime behavior.
+2. Changes to library internals which are technically public but not intended or documented for external use. _(Please open a GitHub issue to let us know if you are relying on such internals.)_
+3. Changes that we do not expect to impact the vast majority of users in practice.
+
+We take backwards-compatibility seriously and work hard to ensure you can rely on a smooth upgrade experience.
+
+We are keen for your feedback; please open an [issue](https://www.github.com/stainless-sdks/hh-typescript/issues) with questions, bugs, or suggestions.
+
+## Requirements
+
+TypeScript >= 4.9 is supported.
+
+The following runtimes are supported:
+
+- Web browsers (Up-to-date Chrome, Firefox, Safari, Edge, and more)
+- Node.js 20 LTS or later ([non-EOL](https://endoflife.date/nodejs)) versions.
+- Deno v1.28.0 or higher.
+- Bun 1.0 or later.
+- Cloudflare Workers.
+- Vercel Edge Runtime.
+- Jest 28 or greater with the `"node"` environment (`"jsdom"` is not supported at this time).
+- Nitro v2.6 or greater.
+
+Note that React Native is not supported at this time.
+
+If you are interested in other runtime environments, please open or upvote an issue on GitHub.
+
+## Contributing
+
+See [the contributing documentation](./CONTRIBUTING.md).
