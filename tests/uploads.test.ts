@@ -1,7 +1,6 @@
 import fs from 'fs';
 import type { ResponseLike } from 'hh/internal/to-file';
 import { toFile } from 'hh/core/uploads';
-import { File } from 'node:buffer';
 
 class MyClass {
   name: string = 'foo';
