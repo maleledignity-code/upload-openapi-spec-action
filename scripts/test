@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
+
+set -e
 
 cd "$(dirname "$0")/.."
-npm test -- --run "$@"
+
+
+
+echo "==> Running tests"
+./node_modules/.bin/jest "$@"

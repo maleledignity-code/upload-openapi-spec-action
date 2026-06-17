@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
+
+set -e
 
 cd "$(dirname "$0")/.."
-npm run lint:fix
+
+echo "==> Running eslint --fix"
+./node_modules/.bin/eslint --fix .
+
+echo "==> Running prettier --write"
+./node_modules/.bin/prettier --write --cache --cache-strategy metadata .
